@@ -13,7 +13,7 @@ import jax.numpy as jnp
 import jax
 
 # typing
-from jaxtyping import Array, Float, jaxtyped
+from jaxtyping import Array, Float, Int, jaxtyped
 from beartype import beartype as typechecker
 from typing import Tuple, Union
 STATE_TYPE = Float[Array, "num_vars num_cells_x num_cells_y num_cells_z"]
@@ -24,6 +24,10 @@ VELOCITY_X_INDEX = 1
 VELOCITY_Y_INDEX = 2
 VELOCITY_Z_INDEX = 3
 PRESSURE_INDEX = 4
+VAR_AXIS = 0
+X_AXIS = 1
+Y_AXIS = 2
+Z_AXIS = 3
 
 # -------------------------------------------------------------
 # ================== ↓ Basic Fluid Equations ↓ ================
@@ -120,6 +124,48 @@ def speed_of_sound(rho, p, gamma):
     """
     return jnp.sqrt(gamma * p / rho)
 
+@jaxtyped(typechecker=typechecker)
+@partial(jax.jit, static_argnames=['flux_direction_index'])
+def get_wave_speeds(
+    primitives_left: STATE_TYPE,
+    primitives_right: STATE_TYPE,
+    gamma: Union[float, Float[Array, ""]],
+    flux_direction_index: int
+) -> Union[float, Float[Array, ""]]:
+    """
+    Returns the conservative fluxes.
+
+    Args:
+        primitives_left: States left of the interfaces.
+        primitives_right: States right of the interfaces.
+        gamma: The adiabatic index.
+
+    Returns:
+        The conservative fluxes at the interfaces.
+
+    """
+    
+    rho_L = primitives_left[DENSITY_INDEX]
+    u_L = primitives_left[flux_direction_index]
+    p_L = primitives_left[PRESSURE_INDEX]
+
+    rho_R = primitives_right[DENSITY_INDEX]
+    u_R = primitives_right[flux_direction_index]
+    p_R = primitives_right[PRESSURE_INDEX]
+
+    c_L = speed_of_sound(rho_L, p_L, gamma)
+    c_R = speed_of_sound(rho_R, p_R, gamma)
+
+    wave_speeds_right_plus = jnp.maximum(jnp.maximum(u_L + c_L, u_R + c_R), 0)
+    wave_speeds_left_minus = jnp.minimum(jnp.minimum(u_L - c_L, u_R - c_R), 0)
+
+    max_wave_speed = jnp.maximum(
+        jnp.max(jnp.abs(wave_speeds_right_plus)),
+        jnp.max(jnp.abs(wave_speeds_left_minus))
+    )
+
+    return max_wave_speed
+
 # -------------------------------------------------------------
 # ================== ↑ Basic Fluid Equations ↑ ================
 # -------------------------------------------------------------
@@ -148,7 +194,7 @@ def _euler_flux(
         The Euler fluxes for the given primitive states.
     """
     rho = primitive_state[DENSITY_INDEX]
-    p = primitive_state[DENSITY_INDEX]
+    p = primitive_state[PRESSURE_INDEX]
     
     # start with a copy of the primitive states
     flux_vector = primitive_state
@@ -247,6 +293,74 @@ def _hll_solver(
 # ==================== ↓ Time Integration ↓ ===================
 # -------------------------------------------------------------
 
+
+@jaxtyped(typechecker=typechecker)
+@jax.jit
+def _cfl_time_step(
+    primitive_state: STATE_TYPE,
+    grid_spacing: Union[float, Float[Array, ""]],
+    gamma: Union[float, Float[Array, ""]],
+    C_CFL: Union[float, Float[Array, ""]] = 0.4
+) -> Float[Array, ""]:
+
+    """Calculate the time step based on the CFL condition.
+
+    Args:
+        primitive_state: The primitive state array.
+        grid_spacing: The cell width.
+        dt_max: The maximum time step.
+        gamma: The adiabatic index.
+        C_CFL: The CFL number.
+
+    Returns:
+        The time step.
+    
+    """
+
+    # ==================== ↓ cell communication here ↓ ===================
+
+    # wave speeds in x direction
+    primitive_state_left = primitive_state[:, :-1, :, :]
+    primitive_state_right = primitive_state[:, 1:, :, :]
+    max_wave_speed_x = get_wave_speeds(
+        primitive_state_left,
+        primitive_state_right,
+        gamma,
+        VELOCITY_X_INDEX
+    )
+
+    # wave speeds in y direction
+    primitive_state_left = primitive_state[:, :, :-1, :]
+    primitive_state_right = primitive_state[:, :, 1:, :]
+    max_wave_speed_y = get_wave_speeds(
+        primitive_state_left,
+        primitive_state_right,
+        gamma,
+        VELOCITY_Y_INDEX
+    )
+
+    # wave speeds in z direction
+    primitive_state_left = primitive_state[:, :, :, :-1]
+    primitive_state_right = primitive_state[:, :, :, 1:]
+    max_wave_speed_z = get_wave_speeds(
+        primitive_state_left,
+        primitive_state_right,
+        gamma,
+        VELOCITY_Z_INDEX
+    )
+
+    # ==================== ↑ cell communication here ↑ ===================
+
+    # get the maximum wave speed
+    max_wave_speed = jnp.maximum(
+        jnp.maximum(max_wave_speed_x, max_wave_speed_y),
+        max_wave_speed_z
+    )
+
+    dt = C_CFL * grid_spacing / max_wave_speed
+
+    return dt
+
 @jaxtyped(typechecker=typechecker)
 @partial(jax.jit, static_argnames=['axis'])
 def _evolve_state_along_axis(
@@ -260,7 +374,7 @@ def _evolve_state_along_axis(
     # get conserved variables
     conservative_states = conserved_state_from_primitive(primitive_state, gamma)
 
-    # ==================== ↓ cell communication only here ↓ ===================
+    # ==================== ↓ cell communication here ↓ ===================
     primitive_state_left = jax.lax.slice_in_dim(primitive_state, 1, -2, axis = axis)
     primitive_state_right = jax.lax.slice_in_dim(primitive_state, 2, -1, axis = axis)
 
@@ -275,7 +389,7 @@ def _evolve_state_along_axis(
     conservative_states = conservative_states.at[
         tuple(slice(2, -2) if i == axis else slice(None) for i in range(conservative_states.ndim))
     ].add(conserved_change)
-    # ==================== ↑ cell communication only here ↑ ===================
+    # ==================== ↑ cell communication here ↑ ===================
 
     primitive_state = primitive_state_from_conserved(conservative_states, gamma)
 
@@ -283,14 +397,13 @@ def _evolve_state_along_axis(
 
 
 @jaxtyped(typechecker=typechecker)
-@partial(jax.jit, static_argnames=['num_steps'])
+@jax.jit
 def time_integration(
     primitive_state: STATE_TYPE,
     grid_spacing: Union[float, Float[Array, ""]],
-    num_steps: int,
-    dt: Union[float, Float[Array, ""]],
+    t_final: Union[float, Float[Array, ""]],
     gamma: Union[float, Float[Array, ""]],
-) -> STATE_TYPE:
+) -> Tuple[STATE_TYPE, Union[float, Int[Array, ""]]]:
     """
     Evolve the state of the fluid in time.
 
@@ -305,11 +418,26 @@ def time_integration(
         The evolved state of the fluid.
     """
 
-    for _ in range(num_steps):
-        for axis in range(1, 4):
-            primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, axis)
+    def time_step_fn(state):
+        primitive_state, t, num_iterations = state
 
-    return primitive_state
+        dt = _cfl_time_step(primitive_state, grid_spacing, gamma)
+        primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, X_AXIS)
+        primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, Y_AXIS)
+        primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, Z_AXIS)
+        t += dt
+        num_iterations += 1
+
+        return primitive_state, t, num_iterations
+
+    def cond_fn(state):
+        _, t, _ = state
+        return t < t_final
+
+    initial_state = (primitive_state, 0.0, 0)
+    primitive_state, _, num_iterations = jax.lax.while_loop(cond_fn, time_step_fn, initial_state)
+
+    return primitive_state, num_iterations
 
 # -------------------------------------------------------------
 # ==================== ↑ Time Integration ↑ ===================
