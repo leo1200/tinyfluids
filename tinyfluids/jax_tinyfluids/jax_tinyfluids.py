@@ -260,6 +260,7 @@ def _evolve_state_along_axis(
     # get conserved variables
     conservative_states = conserved_state_from_primitive(primitive_state, gamma)
 
+    # ==================== ↓ cell communication only here ↓ ===================
     primitive_state_left = jax.lax.slice_in_dim(primitive_state, 1, -2, axis = axis)
     primitive_state_right = jax.lax.slice_in_dim(primitive_state, 2, -1, axis = axis)
 
@@ -274,6 +275,7 @@ def _evolve_state_along_axis(
     conservative_states = conservative_states.at[
         tuple(slice(2, -2) if i == axis else slice(None) for i in range(conservative_states.ndim))
     ].add(conserved_change)
+    # ==================== ↑ cell communication only here ↑ ===================
 
     primitive_state = primitive_state_from_conserved(conservative_states, gamma)
 
