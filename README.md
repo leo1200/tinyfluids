@@ -6,9 +6,13 @@ tinyfluids aims to contain a collection of small, simple 3D fluid simulators (fi
 
 Our [baseline implementation](tinyfluids/jax_tinyfluids/jax_tinyfluids.py) in `JAX` scales to multiple GPUs (and nodes) automatically via `JAX`'s "parallelization follows data" approach and sharding of the initial conditions. The maximum speedup on 4 H200 GPUs compared to 1, however, seems to be around x2.6 (the optimal would be x4), a scaling plot is shown below.
 
-| ![Scaling Plot](figures/scaling_results.png) | ![Example Simulation](figures/check_1024.png)  |
-|:--------------------------------------------:|:----------------------------------------------:|
-| Scaling Plot                                 | Example Simulation with (1024)^3 Cells         |
+| ![Scaling Plot](figures/scaling_results.png) |
+|:--------------------------------------------:|
+| Scaling Plot                                 |
+
+| ![Example Simulation](figures/check_1024.png)  |
+|:----------------------------------------------:|
+| Example Simulation with (1024)^3 Cells         |
 
 ## parallelization strategies
 
