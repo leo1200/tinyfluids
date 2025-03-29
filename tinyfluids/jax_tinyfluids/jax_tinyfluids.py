@@ -17,6 +17,7 @@ from jaxtyping import Array, Float, Int, jaxtyped
 from beartype import beartype as typechecker
 from typing import Tuple, Union
 STATE_TYPE = Float[Array, "num_vars num_cells_x num_cells_y num_cells_z"]
+FIELD_TYPE = Float[Array, "num_cells_x num_cells_y num_cells_z"]
 
 # constants
 DENSITY_INDEX = 0
@@ -131,40 +132,77 @@ def get_wave_speeds(
     primitives_right: STATE_TYPE,
     gamma: Union[float, Float[Array, ""]],
     flux_direction_index: int
-) -> Union[float, Float[Array, ""]]:
+) -> Tuple[FIELD_TYPE, FIELD_TYPE]:
     """
-    Returns the conservative fluxes.
+    Wave speed calculation.
 
     Args:
         primitives_left: States left of the interfaces.
         primitives_right: States right of the interfaces.
-        gamma: The adiabatic index.
+        gamma: The adiabatic index
+        flux_direction_index: The index of the velocity component
+                              in the flux direction of interest.
 
     Returns:
-        The conservative fluxes at the interfaces.
+        Returns the wave speeds at the interfaces to the left and right.
 
     """
     
+    # left state
     rho_L = primitives_left[DENSITY_INDEX]
     u_L = primitives_left[flux_direction_index]
     p_L = primitives_left[PRESSURE_INDEX]
 
+    # right state
     rho_R = primitives_right[DENSITY_INDEX]
     u_R = primitives_right[flux_direction_index]
     p_R = primitives_right[PRESSURE_INDEX]
 
+    # calculate the sound speeds
     c_L = speed_of_sound(rho_L, p_L, gamma)
     c_R = speed_of_sound(rho_R, p_R, gamma)
 
+    # wave speeds
     wave_speeds_right_plus = jnp.maximum(jnp.maximum(u_L + c_L, u_R + c_R), 0)
     wave_speeds_left_minus = jnp.minimum(jnp.minimum(u_L - c_L, u_R - c_R), 0)
 
-    max_wave_speed = jnp.maximum(
+    return wave_speeds_left_minus, wave_speeds_right_plus
+
+@jaxtyped(typechecker=typechecker)
+@partial(jax.jit, static_argnames=['flux_direction_index'])
+def get_max_wave_speeds(
+    primitives_left: STATE_TYPE,
+    primitives_right: STATE_TYPE,
+    gamma: Union[float, Float[Array, ""]],
+    flux_direction_index: int
+) -> Union[float, Float[Array, ""]]:
+    """
+    Wave speed maximum
+
+    Args:
+        primitives_left: States left of the interfaces.
+        primitives_right: States right of the interfaces.
+        gamma: The adiabatic index
+        flux_direction_index: The index of the velocity component
+                              in the flux direction of interest.
+
+    Returns:
+        Returns the maximum wave speed at the interfaces.
+
+    """
+    
+    wave_speeds_left_minus, wave_speeds_right_plus = get_wave_speeds(
+        primitives_left,
+        primitives_right,
+        gamma,
+        flux_direction_index
+    )
+
+    return jnp.maximum(
         jnp.max(jnp.abs(wave_speeds_right_plus)),
         jnp.max(jnp.abs(wave_speeds_left_minus))
     )
 
-    return max_wave_speed
 
 # -------------------------------------------------------------
 # ================== ↑ Basic Fluid Equations ↑ ================
@@ -249,27 +287,17 @@ def _hll_solver(
         The conservative fluxes at the interfaces.
     """
     
-    # left state
-    rho_L = primitives_left[DENSITY_INDEX]
-    u_L = primitives_left[flux_direction_index]
-    p_L = primitives_left[PRESSURE_INDEX]
-
-    # right state
-    rho_R = primitives_right[DENSITY_INDEX]
-    u_R = primitives_right[flux_direction_index]
-    p_R = primitives_right[PRESSURE_INDEX]
-
-    # calculate the sound speeds
-    c_L = speed_of_sound(rho_L, p_L, gamma)
-    c_R = speed_of_sound(rho_R, p_R, gamma)
-
     # get the left and right states and fluxes
     fluxes_left = _euler_flux(primitives_left, gamma, flux_direction_index)
     fluxes_right = _euler_flux(primitives_right, gamma, flux_direction_index)
     
-    # very simple approach for the wave velocities
-    wave_speeds_right_plus = jnp.maximum(jnp.maximum(u_L + c_L, u_R + c_R), 0)
-    wave_speeds_left_minus = jnp.minimum(jnp.minimum(u_L - c_L, u_R - c_R), 0)
+    # wave speeds
+    wave_speeds_left_minus, wave_speeds_right_plus = get_wave_speeds(
+        primitives_left,
+        primitives_right,
+        gamma,
+        flux_direction_index
+    )
 
     # get the left and right conserved variables
     conserved_left = conserved_state_from_primitive(primitives_left, gamma)
@@ -320,9 +348,9 @@ def _cfl_time_step(
     # ==================== ↓ cell communication here ↓ ===================
 
     # wave speeds in x direction
-    primitive_state_left = primitive_state[:, :-1, :, :]
-    primitive_state_right = primitive_state[:, 1:, :, :]
-    max_wave_speed_x = get_wave_speeds(
+    primitive_state_left = jax.lax.slice_in_dim(primitive_state, 0, -1, axis = X_AXIS)
+    primitive_state_right = jax.lax.slice_in_dim(primitive_state, 1, None, axis = X_AXIS)
+    max_wave_speed_x = get_max_wave_speeds(
         primitive_state_left,
         primitive_state_right,
         gamma,
@@ -330,9 +358,9 @@ def _cfl_time_step(
     )
 
     # wave speeds in y direction
-    primitive_state_left = primitive_state[:, :, :-1, :]
-    primitive_state_right = primitive_state[:, :, 1:, :]
-    max_wave_speed_y = get_wave_speeds(
+    primitive_state_left = jax.lax.slice_in_dim(primitive_state, 0, -1, axis = Y_AXIS)
+    primitive_state_right = jax.lax.slice_in_dim(primitive_state, 1, None, axis = Y_AXIS)
+    max_wave_speed_y = get_max_wave_speeds(
         primitive_state_left,
         primitive_state_right,
         gamma,
@@ -340,9 +368,9 @@ def _cfl_time_step(
     )
 
     # wave speeds in z direction
-    primitive_state_left = primitive_state[:, :, :, :-1]
-    primitive_state_right = primitive_state[:, :, :, 1:]
-    max_wave_speed_z = get_wave_speeds(
+    primitive_state_left = jax.lax.slice_in_dim(primitive_state, 0, -1, axis = Z_AXIS)
+    primitive_state_right = jax.lax.slice_in_dim(primitive_state, 1, None, axis = Z_AXIS)
+    max_wave_speed_z = get_max_wave_speeds(
         primitive_state_left,
         primitive_state_right,
         gamma,
@@ -375,8 +403,8 @@ def _evolve_state_along_axis(
     conservative_states = conserved_state_from_primitive(primitive_state, gamma)
 
     # ==================== ↓ cell communication here ↓ ===================
-    primitive_state_left = jax.lax.slice_in_dim(primitive_state, 1, -2, axis = axis)
-    primitive_state_right = jax.lax.slice_in_dim(primitive_state, 2, -1, axis = axis)
+    primitive_state_left = jax.lax.slice_in_dim(primitive_state, 0, -1, axis = axis)
+    primitive_state_right = jax.lax.slice_in_dim(primitive_state, 1, None, axis = axis)
 
     fluxes = _hll_solver(primitive_state_left, primitive_state_right, gamma, axis)
 
@@ -387,7 +415,7 @@ def _evolve_state_along_axis(
     ) * dt
 
     conservative_states = conservative_states.at[
-        tuple(slice(2, -2) if i == axis else slice(None) for i in range(conservative_states.ndim))
+        tuple(slice(1, -1) if i == axis else slice(None) for i in range(conservative_states.ndim))
     ].add(conserved_change)
     # ==================== ↑ cell communication here ↑ ===================
 
@@ -421,7 +449,11 @@ def time_integration(
     def time_step_fn(state):
         primitive_state, t, num_iterations = state
 
+        # the wave speed calculation is currently done twice, once
+        # for finding dt and once for the state update, which
+        # is not optimal
         dt = _cfl_time_step(primitive_state, grid_spacing, gamma)
+
         primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, X_AXIS)
         primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, Y_AXIS)
         primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, Z_AXIS)
