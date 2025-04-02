@@ -2,6 +2,8 @@
 This is a baseline first order Eulerian hydrodynamics solver
 with a HLL Riemann solver for the Euler equations written in JAX.
 
+Parallelization using shardmap and halo exchange.
+
 For a more feature-rich fluid code for astrophysics in JAX,
 check out https://github.com/leo1200/jf1uids, for other
 purposes https://github.com/tumaer/JAXFLUIDS.
@@ -11,6 +13,11 @@ purposes https://github.com/tumaer/JAXFLUIDS.
 from functools import partial
 import jax.numpy as jnp
 import jax
+
+# sharding
+from jax.sharding import Mesh
+from jax.experimental.shard_map import shard_map
+from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
 
 # typing
 from jaxtyping import Array, Float, Int, jaxtyped
@@ -29,6 +36,73 @@ VAR_AXIS = 0
 X_AXIS = 1
 Y_AXIS = 2
 Z_AXIS = 3
+
+def pad(input_array, padding, sharding):
+    sharded_pad = shard_map(
+        jnp.pad,
+        mesh = sharding.mesh,
+        in_specs = (sharding.spec, P()),
+        out_specs = sharding.spec,
+    )
+    return sharded_pad(input_array, padding)
+
+
+def unpad(input_array, padding, sharding):
+    def _slice_to_unpad(padded_shard, padding_spec):
+        return padded_shard[
+            tuple(slice(pad[0], -pad[1] if pad[1] > 0 else None) for pad in padding_spec)
+        ]
+
+    # Apply the slicing operation across shards using shard_map
+    sharded_unpad = shard_map(
+        _slice_to_unpad,
+        mesh=sharding.mesh,
+        in_specs=(sharding.spec, P()),
+        out_specs=sharding.spec
+    )
+
+    return sharded_unpad(input_array, padding)
+
+@partial(jax.jit, static_argnames=['axis', 'num_blocks_along_axis'])
+def send_right(shard, axis, num_blocks_along_axis):
+    left_perm = [(i, (i + 1) % num_blocks_along_axis) for i in range(num_blocks_along_axis)] #  -1 for non periodic
+    return jax.lax.ppermute(shard, perm=left_perm, axis_name = axis)
+
+@partial(jax.jit, static_argnames=['axis', 'num_blocks_along_axis'])
+def send_left(shard, axis, num_blocks_along_axis):
+    # Create permutation based on device IDs along the axis
+    left_perm = [((i + 1) % num_blocks_along_axis, i) for i in range(num_blocks_along_axis)] # -1 for non periodic
+    return jax.lax.ppermute(shard, perm=left_perm, axis_name = axis)
+
+@partial(jax.jit, static_argnames=['padding', 'axis'])
+def collect_right_along_axis(shard, padding, axis):
+    padding_axis = padding[axis]
+    return jax.lax.slice_in_dim(shard, -padding_axis[1] - padding_axis[0], -padding_axis[1], axis=axis)
+
+@partial(jax.jit, static_argnames=['padding', 'axis'])
+def collect_left_along_axis(shard, padding, axis):
+    padding_axis = padding[axis]
+    return jax.lax.slice_in_dim(shard, padding_axis[0], padding_axis[0] + padding_axis[1], axis=axis)
+
+@partial(jax.jit, static_argnames=['padding', 'num_blocks_along_axis', 'axis'])
+def _halo_exchange_along_axis(shard, padding, num_blocks_along_axis, axis):
+
+    left_halo = collect_left_along_axis(shard, padding, axis)
+    right_halo = collect_right_along_axis(shard, padding, axis)
+
+    right, left = send_left(left_halo, axis, num_blocks_along_axis), send_right(right_halo, axis, num_blocks_along_axis)
+
+    shard = shard.at[(slice(None, None),) * axis + (slice(0, padding[axis][0]),) + (slice(None, None),) * (shard.ndim - axis - 1)].set(left)
+    shard = shard.at[(slice(None, None),) * axis + (slice(-padding[axis][1], None),) + (slice(None, None),) * (shard.ndim - axis - 1)].set(right)
+
+    return shard
+
+@partial(jax.jit, static_argnames=['padding', 'split'])
+def _halo_exchange(shard, padding, split):
+    for _, axis in enumerate([X_AXIS, Y_AXIS, Z_AXIS]):
+        if split[axis] > 1:
+            shard = _halo_exchange_along_axis(shard, padding, split[axis], axis)
+    return shard
 
 # -------------------------------------------------------------
 # ================== ↓ Basic Fluid Equations ↓ ================
@@ -423,6 +497,19 @@ def _evolve_state_along_axis(
 
     return primitive_state
 
+@jaxtyped(typechecker=typechecker)
+@jax.jit
+def _evolve_state(
+    primitive_state: STATE_TYPE,
+    grid_spacing: Union[float, Float[Array, ""]],
+    dt: Union[float, Float[Array, ""]],
+    gamma: Union[float, Float[Array, ""]],
+) -> STATE_TYPE:
+    primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, X_AXIS)
+    primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, Y_AXIS)
+    primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, Z_AXIS)
+
+    return primitive_state
 
 @jaxtyped(typechecker=typechecker)
 @jax.jit
@@ -436,7 +523,9 @@ def time_integration(
     Evolve the state of the fluid in time.
 
     Args:
-        primitive_state: The primitive state of the fluid.
+        primitive_state: The primitive state of the fluid,
+                         sharded according to the sharding_mesh.
+        sharding_mesh: The mesh used for sharding.
         grid_spacing: The grid spacing.
         dt: The time step.
         gamma: The adiabatic index of the fluid.
@@ -449,14 +538,19 @@ def time_integration(
     def time_step_fn(state):
         primitive_state, t, num_iterations = state
 
+        padding = ((0, 0), (1, 1), (1, 1), (0, 0))
+        split = (1, 2, 2, 1)
+        primitive_state = _halo_exchange(primitive_state, padding, split)
+
         # the wave speed calculation is currently done twice, once
         # for finding dt and once for the state update, which
         # is not optimal
-        dt = _cfl_time_step(primitive_state, grid_spacing, gamma)
+        dt_local = _cfl_time_step(primitive_state, grid_spacing, gamma)
 
-        primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, X_AXIS)
-        primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, Y_AXIS)
-        primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, Z_AXIS)
+        dt = jax.lax.pmin(dt_local, axis_name=(1.0, 2.0))
+
+        primitive_state = _evolve_state(primitive_state, grid_spacing, dt, gamma)
+
         t += dt
         num_iterations += 1
 

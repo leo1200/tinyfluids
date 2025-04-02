@@ -6,16 +6,14 @@ Benchmark of the baseline implementation in JAX.
 import os
 
 import jax
-os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7" 
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,3,5" 
 
-from tinyfluids.jax_tinyfluids import time_integration
-from tinyfluids.jax_tinyfluids import DENSITY_INDEX, PRESSURE_INDEX
+from tinyfluids.jax_tinyfluids.jax_baseline import time_integration
+from tinyfluids.jax_tinyfluids.jax_baseline import DENSITY_INDEX, PRESSURE_INDEX
 import timeit
 import jax.numpy as jnp
 
 from jax.sharding import PartitionSpec as P, NamedSharding
-
-jax.config.update("jax_debug_nans", True)
 
 import matplotlib.pyplot as plt
 
@@ -183,7 +181,7 @@ def plot_scaling_results():
 
 
 
-# make_scaling_plots(sharding = False, num_cells_list = [32, 64, 96, 128, 196, 256, 384, 512, 768])
-make_scaling_plots(sharding = True, num_cells_list =  [32, 64, 96, 128, 196, 256, 384, 512, 768, 1024])
+# # make_scaling_plots(sharding = False, num_cells_list = [32, 64, 96, 128, 196, 256, 384, 512, 768])
+# make_scaling_plots(sharding = True, num_cells_list =  [32, 64, 96, 128, 196, 256, 384, 512, 768, 1024])
 
-plot_scaling_results()
+# plot_scaling_results()
