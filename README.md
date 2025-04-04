@@ -4,7 +4,7 @@ tinyfluids aims to contain a collection of small, simple 3D fluid simulators (fi
 
 ## jax_tinyfluids - the baseline
 
-Our [baseline implementation](tinyfluids/jax_tinyfluids/jax_tinyfluids.py) in `JAX` scales to multiple GPUs (and nodes) automatically via `JAX`'s "parallelization follows data" approach and sharding of the initial conditions. The maximum speedup on 4 H200 GPUs compared to 1, however, seems to be around x2.6 (the optimal would be x4), a scaling plot is shown below.
+Our [baseline implementation](tinyfluids/jax_tinyfluids/jax_tinyfluids.py) in `JAX` scales to multiple GPUs (and nodes) automatically via `JAX`'s "parallelization follows data" approach and sharding of the initial conditions. We have also implemented a shard map parallelization strategy with halo exchange. Scaling strongly depends on the devices used, the scaling plot below was generated on 4 NVIDIA H100s. Scaling up to x2.6 was achieved for the baseline parallelization on H200 but as of busy computational ressources I could not test the scaling there for the shard-mapped parallelization strategy. My current guess is that just jitting has a pretty significant memory exchange overhead - I also tried to test this on lower-end GPUs (with slower inter-device communication) where scaling with shard map still worked ok but via only jitting, runtimes were usually longer than for a single GPU run. Looking at the JAXFLUIDS paper, they seem to get ideal speedups, while we only get up to ~3.5 here. One reason might be that the per shard computations are currently as simple as possible (1st order godunov) so communication overhead becomes more significant.
 
 | ![Scaling Plot](figures/scaling_results.png) |
 |:--------------------------------------------:|

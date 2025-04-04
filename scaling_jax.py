@@ -6,7 +6,7 @@ Benchmark of the baseline implementation in JAX.
 import os
 
 import jax
-os.environ["CUDA_VISIBLE_DEVICES"] = "5,6,7,8" 
+# os.environ["CUDA_VISIBLE_DEVICES"] = "5,6,7,8" 
 
 from tinyfluids.jax_tinyfluids.sharding_helpers import pad, unpad
 from tinyfluids.jax_tinyfluids.time_integration import time_integration
@@ -101,6 +101,8 @@ def make_scaling_plots(sharding = False, shard_mapped = False, num_cells_list = 
             if shard_mapped:
                 padding = ((0, 0), (1, 1), (1, 1), (0, 0))
                 primitive_state = pad(primitive_state, padding, sharding)
+            else:
+                padding = None
         else:
             padding = None
             split = None
@@ -230,8 +232,8 @@ def plot_scaling_results(plot_sharded = True, plot_sharded_mapped = True):
 
 
 
-make_scaling_plots(sharding = False, shard_mapped = False, num_cells_list = [32, 64, 96, 128, 196, 256, 384, 444])
-# # make_scaling_plots(sharding = True, shard_mapped = False, num_cells_list  = [32, 64, 96, 128, 196, 256, 384, 512, 768, 1024])
-make_scaling_plots(sharding = True, shard_mapped = True, num_cells_list   = [32, 64, 96, 128, 196, 256, 384, 444])
+make_scaling_plots(sharding = False, shard_mapped = False, num_cells_list = [32, 64, 96, 128, 196, 256, 384, 512, 768])
+make_scaling_plots(sharding = True, shard_mapped = False, num_cells_list  = [32, 64, 96, 128, 196, 256, 384, 512, 768, 1024])
+make_scaling_plots(sharding = True, shard_mapped = True, num_cells_list   = [32, 64, 96, 128, 196, 256, 384, 512, 768, 1024])
 
-plot_scaling_results(plot_sharded = False, plot_sharded_mapped = True)
+plot_scaling_results(plot_sharded = True, plot_sharded_mapped = True)
