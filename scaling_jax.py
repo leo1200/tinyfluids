@@ -6,7 +6,7 @@ Benchmark of the baseline implementation in JAX.
 import os
 
 import jax
-os.environ["CUDA_VISIBLE_DEVICES"] = "3,5,6,7" 
+os.environ["CUDA_VISIBLE_DEVICES"] = "5,6,7,8" 
 
 from tinyfluids.jax_tinyfluids.sharding_helpers import pad, unpad
 from tinyfluids.jax_tinyfluids.time_integration import time_integration
@@ -38,21 +38,20 @@ def setup_ics(num_cells, num_injection_cells=2):
 
     return primitive_state, grid_spacing
 
-def measure_execution_time(primitive_state, grid_spacing, t_final, gamma, shard_mapped):
+def measure_execution_time(primitive_state, grid_spacing, t_final, gamma, shard_mapped, padding = None, split = None):
     # execute once for compilation and warmup
 
-    final_state, num_iterations = time_integration(primitive_state, grid_spacing, t_final, gamma, shard_mapped)
+    final_state, num_iterations = time_integration(primitive_state, grid_spacing, t_final, gamma, shard_mapped, padding, split)
     final_state.block_until_ready()
 
     if shard_mapped:
-        padding = ((0, 0), (1, 1), (1, 1), (0, 0))
         final_state = unpad(final_state, padding, final_state.sharding)
 
     plot_results(final_state)
     
     # Create a function for timing
     def timed_execution():
-        final_state, _ = time_integration(primitive_state, grid_spacing, t_final, gamma, shard_mapped)
+        final_state, _ = time_integration(primitive_state, grid_spacing, t_final, gamma, shard_mapped, padding, split)
         final_state.block_until_ready()  # Ensure execution completes before timing stops
         
     # Measure execution time
@@ -92,7 +91,8 @@ def make_scaling_plots(sharding = False, shard_mapped = False, num_cells_list = 
         primitive_state, grid_spacing = setup_ics(num_cells, num_cells // 16)
 
         if sharding:
-            sharding_mesh = jax.make_mesh((1, 2, 2, 1), (VAR_AXIS, X_AXIS, Y_AXIS, Z_AXIS))
+            split = (1, 2, 2, 1)
+            sharding_mesh = jax.make_mesh(split, (VAR_AXIS, X_AXIS, Y_AXIS, Z_AXIS))
             sharding = jax.NamedSharding(sharding_mesh, P(VAR_AXIS, X_AXIS, Y_AXIS, Z_AXIS))
             primitive_state = jax.device_put(primitive_state, sharding)
 
@@ -101,8 +101,11 @@ def make_scaling_plots(sharding = False, shard_mapped = False, num_cells_list = 
             if shard_mapped:
                 padding = ((0, 0), (1, 1), (1, 1), (0, 0))
                 primitive_state = pad(primitive_state, padding, sharding)
+        else:
+            padding = None
+            split = None
         
-        execution_time, execution_time_per_iteration = measure_execution_time(primitive_state, grid_spacing, t_final, gamma, shard_mapped)
+        execution_time, execution_time_per_iteration = measure_execution_time(primitive_state, grid_spacing, t_final, gamma, shard_mapped, padding, split)
         execution_times.append(execution_time)
         execution_times_per_iteration.append(execution_time_per_iteration)
 
@@ -151,11 +154,14 @@ def make_scaling_plots(sharding = False, shard_mapped = False, num_cells_list = 
     # save the figure
     plt.savefig("figures/scaling{}.png".format(file_appendix))
 
-def plot_scaling_results():
+def plot_scaling_results(plot_sharded = True, plot_sharded_mapped = True):
     # load the data
     data_unsharded = jnp.load("results/scaling_data.npz")
-    data_sharded = jnp.load("results/scaling_data_sharding.npz")
-    data_sharded_mapped = jnp.load("results/scaling_data_shard_mapped.npz")
+
+    if plot_sharded:
+        data_sharded = jnp.load("results/scaling_data_sharding.npz")
+    if plot_sharded_mapped:
+        data_sharded_mapped = jnp.load("results/scaling_data_shard_mapped.npz")
 
     fig, axs = plt.subplots(1, 3, figsize=(15, 5))
 
@@ -163,8 +169,12 @@ def plot_scaling_results():
     fig.suptitle("Scaling for a 3D shock test")
 
     axs[0].plot(data_unsharded["num_cells_list"], data_unsharded["execution_times"], 'o-', label = "unsharded")
-    axs[0].plot(data_sharded["num_cells_list"], data_sharded["execution_times"], 'o-', label = "sharded (4 GPUs)")
-    axs[0].plot(data_sharded_mapped["num_cells_list"], data_sharded_mapped["execution_times"], 'o-', label = "sharded (4 GPUs, shard mapped)")
+
+    if plot_sharded:
+        axs[0].plot(data_sharded["num_cells_list"], data_sharded["execution_times"], 'o-', label = "sharded (4 GPUs)")
+
+    if plot_sharded_mapped:
+        axs[0].plot(data_sharded_mapped["num_cells_list"], data_sharded_mapped["execution_times"], 'o-', label = "sharded (4 GPUs, shard mapped)")
     # set x and y log scale
     axs[0].set_xscale("log", base = 2)
     axs[0].set_yscale("log", base = 2)
@@ -174,8 +184,12 @@ def plot_scaling_results():
     axs[0].set_xlabel("Number of cells per dimension")
     axs[0].set_ylabel("Execution time in s")
     axs[1].plot(data_unsharded["num_cells_list"], data_unsharded["execution_times_per_iteration"], 'o-', label = "unsharded")
-    axs[1].plot(data_sharded["num_cells_list"], data_sharded["execution_times_per_iteration"], 'o-', label = "sharded (4 GPUs)")
-    axs[1].plot(data_sharded_mapped["num_cells_list"], data_sharded_mapped["execution_times_per_iteration"], 'o-', label = "sharded (4 GPUs, shard mapped)")
+
+    if plot_sharded:
+        axs[1].plot(data_sharded["num_cells_list"], data_sharded["execution_times_per_iteration"], 'o-', label = "sharded (4 GPUs)")
+
+    if plot_sharded_mapped:
+        axs[1].plot(data_sharded_mapped["num_cells_list"], data_sharded_mapped["execution_times_per_iteration"], 'o-', label = "sharded (4 GPUs, shard mapped)")
     # set x and y log scale
     axs[1].set_xscale("log", base = 2)
     axs[1].set_yscale("log", base = 2)
@@ -185,15 +199,27 @@ def plot_scaling_results():
     axs[1].set_ylabel("Execution time per timestep in s")
 
     # plot the speedup
-    common_length = min(len(data_unsharded["num_cells_list"]), len(data_sharded["num_cells_list"]))
-    speedup = data_unsharded["execution_times"][0:common_length] / data_sharded["execution_times"][0:common_length]
+    if plot_sharded and not plot_sharded_mapped:
+        common_length = min(len(data_unsharded["num_cells_list"]), len(data_sharded["num_cells_list"]))
+    if plot_sharded_mapped and not plot_sharded:
+        common_length = min(len(data_unsharded["num_cells_list"]), len(data_sharded_mapped["num_cells_list"]))
+    if plot_sharded and plot_sharded_mapped:
+        common_length = min(len(data_unsharded["num_cells_list"]), len(data_sharded["num_cells_list"]), len(data_sharded_mapped["num_cells_list"]))
 
-    speedup_mapped = data_unsharded["execution_times"][0:common_length] / data_sharded_mapped["execution_times"][0:common_length]
+    if plot_sharded:
+        speedup = data_unsharded["execution_times"][0:common_length] / data_sharded["execution_times"][0:common_length]
 
-    axs[2].plot(data_unsharded["num_cells_list"][0:common_length], speedup, 'o-', label = "speedup")
-    axs[2].plot(data_unsharded["num_cells_list"][0:common_length], speedup_mapped, 'o-', label = "speedup (shard mapped)")
+    if plot_sharded_mapped:
+        speedup_mapped = data_unsharded["execution_times"][0:common_length] / data_sharded_mapped["execution_times"][0:common_length]
+
+    if plot_sharded:
+        axs[2].plot(data_unsharded["num_cells_list"][0:common_length], speedup, 'o-', label = "speedup")
+
+    if plot_sharded_mapped:
+        axs[2].plot(data_unsharded["num_cells_list"][0:common_length], speedup_mapped, 'o-', label = "speedup (shard mapped)")
+    
     # theoretical speedup is 4
-    axs[2].plot(data_unsharded["num_cells_list"][0:common_length], jnp.ones_like(speedup) * 4, '--', label = "theoretical speedup")
+    axs[2].plot(data_unsharded["num_cells_list"][0:common_length], jnp.ones_like(data_unsharded["num_cells_list"][0:common_length]) * 4, '--', label = "theoretical speedup")
     axs[2].legend()
     axs[2].set_title("Speedup")
     axs[2].set_xlabel("Number of cells per dimension")
@@ -204,8 +230,8 @@ def plot_scaling_results():
 
 
 
-# make_scaling_plots(sharding = False, shard_mapped = False, num_cells_list = [32, 64, 96, 128, 196, 256, 384, 512])
-make_scaling_plots(sharding = True, shard_mapped = False, num_cells_list  = [32, 64, 96, 128, 196, 256, 384, 512, 768])
-make_scaling_plots(sharding = True, shard_mapped = True, num_cells_list   = [32, 64, 96, 128, 196, 256, 384, 512, 768])
+make_scaling_plots(sharding = False, shard_mapped = False, num_cells_list = [32, 64, 96, 128, 196, 256, 384, 444])
+# # make_scaling_plots(sharding = True, shard_mapped = False, num_cells_list  = [32, 64, 96, 128, 196, 256, 384, 512, 768, 1024])
+make_scaling_plots(sharding = True, shard_mapped = True, num_cells_list   = [32, 64, 96, 128, 196, 256, 384, 444])
 
-plot_scaling_results()
+plot_scaling_results(plot_sharded = False, plot_sharded_mapped = True)

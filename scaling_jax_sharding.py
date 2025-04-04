@@ -2,7 +2,7 @@ import os
 
 import jax
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3,5,6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,4,5,6,7,8"
 
 from jax.experimental.shard_map import shard_map
 
@@ -45,7 +45,7 @@ def setup_ics(num_cells, num_injection_cells=2):
 
     return primitive_state, grid_spacing
 
-num_cells = 512
+num_cells = 256
 num_injection_cells = num_cells // 16
 primitive_state, grid_spacing = setup_ics(num_cells, num_injection_cells)
 
@@ -57,11 +57,12 @@ shard_mapped = True
 
 # TODO: do outer boarders better
 if shard:
-    sharding_mesh = jax.make_mesh((1, 2, 2, 1), (VAR_AXIS, X_AXIS, Y_AXIS, Z_AXIS))
+    split = (1, 2, 2, 2)
+    sharding_mesh = jax.make_mesh(split, (VAR_AXIS, X_AXIS, Y_AXIS, Z_AXIS))
     sharding = jax.NamedSharding(sharding_mesh, P(VAR_AXIS, X_AXIS, Y_AXIS, Z_AXIS))
     primitive_state = jax.device_put(primitive_state, sharding)
 
-    padding = ((0, 0), (1, 1), (1, 1), (0, 0))
+    padding = ((0, 0), (1, 1), (1, 1), (1, 1))
 
     if shard_mapped:
         primitive_state = pad(primitive_state, padding, sharding)
@@ -70,7 +71,7 @@ print("started first run")
 
 # Execute once for compilation and warmup
 if shard_mapped:
-    final_state, num_iterations = time_integration(primitive_state, grid_spacing, t_final, gamma, shard_mapped)
+    final_state, num_iterations = time_integration(primitive_state, grid_spacing, t_final, gamma, shard_mapped, padding, split)
 else:
     final_state, num_iterations = _time_integration_inner(primitive_state, grid_spacing, t_final, gamma, shard_mapped)
 final_state.block_until_ready()
@@ -84,7 +85,7 @@ plot_results(final_state)
 
 def time_execution():
     if shard_mapped:
-        final_state, _ = time_integration(primitive_state, grid_spacing, t_final, gamma, shard_mapped)
+        final_state, _ = time_integration(primitive_state, grid_spacing, t_final, gamma, shard_mapped, padding, split)
     else:
         final_state, _ = _time_integration_inner(primitive_state, grid_spacing, t_final, gamma, shard_mapped)
     final_state.block_until_ready()

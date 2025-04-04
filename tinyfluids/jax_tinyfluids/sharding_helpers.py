@@ -1,3 +1,9 @@
+"""NOTE: the way the sharding helpers are written now, the corners / edges are communicated
+in the halo exchange and because they overlap multiple times, which might impact performance, if one does
+not do that we have to be careful that these irrelevant values being 0 does not have a bad effect, e.g.
+in a division at this place a zero comes about and then in a later min operation we get just nan which
+nan-crashes the whole simulation but with nonezero padding, maybe ok"""
+
 # general imports
 from functools import partial
 import jax.numpy as jnp
@@ -22,10 +28,10 @@ def pad(input_array, padding, sharding):
     sharded_pad = shard_map(
         jnp.pad,
         mesh = sharding.mesh,
-        in_specs = (sharding.spec, P()),
+        in_specs = (sharding.spec, P(), None),
         out_specs = sharding.spec,
     )
-    return sharded_pad(input_array, padding)
+    return sharded_pad(input_array, padding, 'edge')
 
 
 def unpad(input_array, padding, sharding):
@@ -67,6 +73,11 @@ def collect_right_along_axis(shard, padding, axis):
         -padding_axis[1],
         axis = axis
     )
+    # selection = tuple(
+    #     slice(padding[i][0], -padding[i][1] if padding[i][1] > 0 else None) if i != axis else slice(-padding_axis[1] - padding_axis[0], -padding_axis[1])
+    #     for i in range(shard.ndim)
+    # )
+    # return shard[selection]
 
 @partial(jax.jit, static_argnames=['padding', 'axis'])
 def collect_left_along_axis(shard, padding, axis):
@@ -77,6 +88,11 @@ def collect_left_along_axis(shard, padding, axis):
         padding_axis[0] + padding_axis[1],
         axis = axis
     )
+    # selection = tuple(
+    #     slice(padding[i][0], -padding[i][1] if padding[i][1] > 0 else None) if i != axis else slice(padding_axis[0], padding_axis[0] + padding_axis[1])
+    #     for i in range(shard.ndim)
+    # )
+    # return shard[selection]
 
 @partial(jax.jit, static_argnames=['padding', 'num_blocks_along_axis', 'axis'])
 def _halo_exchange_along_axis(shard, padding, num_blocks_along_axis, axis):
@@ -92,12 +108,24 @@ def _halo_exchange_along_axis(shard, padding, num_blocks_along_axis, axis):
         (slice(0, padding[axis][0]),) + 
         (slice(None, None),) * (shard.ndim - axis - 1)
         ].set(left)
+
+    # selection_left = tuple(
+    #     slice(padding[i][0], -padding[i][1] if padding[i][1] > 0 else None) if i != axis else slice(0, padding[axis][0])
+    #     for i in range(shard.ndim)
+    # )
+    # shard = shard.at[selection_left].set(left)
     
     shard = shard.at[
         (slice(None, None),) * axis + 
         (slice(-padding[axis][1], None),) + 
         (slice(None, None),) * (shard.ndim - axis - 1)
         ].set(right)
+
+    # selection_right = tuple(
+    #     slice(padding[i][0], -padding[i][1] if padding[i][1] > 0 else None) if i != axis else slice(-padding[axis][1], None)
+    #     for i in range(shard.ndim)
+    # )
+    # shard = shard.at[selection_right].set(right)
 
     return shard
 

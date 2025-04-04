@@ -11,6 +11,7 @@ purposes https://github.com/tumaer/JAXFLUIDS.
 
 # general imports
 from functools import partial
+from types import NoneType
 import jax.numpy as jnp
 import jax
 
@@ -32,13 +33,15 @@ from tinyfluids.jax_tinyfluids.fluid import STATE_TYPE, _cfl_time_step, _evolve_
 # -------------------------------------------------------------
 
 @jaxtyped(typechecker=typechecker)
-@partial(jax.jit, static_argnames=["shard_mapped"])
+@partial(jax.jit, static_argnames=["shard_mapped", "padding", "split"])
 def _time_integration_inner(
     primitive_state: STATE_TYPE,
     grid_spacing: Union[float, Float[Array, ""]],
     t_final: Union[float, Float[Array, ""]],
     gamma: Union[float, Float[Array, ""]],
-    shard_mapped: bool
+    shard_mapped: bool,
+    padding: Union[NoneType, Tuple[Tuple[int, int], ...]] = None,
+    split: Union[NoneType, Tuple[int, ...]] = None,
 ) -> Tuple[STATE_TYPE, Union[float, Int[Array, ""]]]:
     """
     Evolve the state of the fluid in time.
@@ -60,8 +63,6 @@ def _time_integration_inner(
         primitive_state, t, num_iterations = state
 
         if shard_mapped:
-            padding = ((0, 0), (1, 1), (1, 1), (0, 0))
-            split = (1, 2, 2, 1)
             primitive_state = _halo_exchange(primitive_state, padding, split)
 
         # the wave speed calculation is currently done twice, once
@@ -94,7 +95,9 @@ def time_integration(
     grid_spacing: Union[float, Float[Array, ""]],
     t_final: Union[float, Float[Array, ""]],
     gamma: Union[float, Float[Array, ""]],
-    shard_mapped: bool
+    shard_mapped: bool,
+    padding: Union[NoneType, Tuple[Tuple[int, int], ...]] = None,
+    split: Union[NoneType, Tuple[int, ...]] = None,
 ) -> Tuple[STATE_TYPE, Union[float, Int[Array, ""]]]:
     """
     Evolve the state of the fluid in time.
@@ -114,11 +117,11 @@ def time_integration(
         sharded_time_integration = shard_map(
             _time_integration_inner,
             mesh = primitive_state.sharding.mesh,
-            in_specs = (primitive_state.sharding.spec, None, None, None, None),
+            in_specs = (primitive_state.sharding.spec, None, None, None, None, None, None),
             out_specs = (primitive_state.sharding.spec, P()),
             check_rep = False
         )
-        return sharded_time_integration(primitive_state, grid_spacing, t_final, gamma, True)
+        return sharded_time_integration(primitive_state, grid_spacing, t_final, gamma, True, padding, split)
     else:
         return _time_integration_inner(primitive_state, grid_spacing, t_final, gamma, False)
 

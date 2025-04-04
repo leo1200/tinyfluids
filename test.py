@@ -5,7 +5,7 @@ from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
 from jax import numpy as jnp
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "5,6,7,8" 
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3" 
 
 # general
 from functools import partial
@@ -16,10 +16,10 @@ global_shape = (16, 16, 16)
 
 # Create a mesh of devices based on pdims
 devices = mesh_utils.create_device_mesh(pdims)
-mesh = Mesh(devices, axis_names = ("x", "y"))
+mesh = Mesh(devices, axis_names = (1, 2))
 
 # Define the sharding spec
-sharding = NamedSharding(mesh, P("x", "y"))
+sharding = NamedSharding(mesh, P(1, 2))
 
 # random global array then put to device
 global_array = jax.random.uniform(
@@ -41,7 +41,7 @@ def min_test(array):
     print("Local min:", local_min)
     
     # Use collectives to compute the global minimum across all devices
-    global_min = jax.lax.pmin(local_min, axis_name = ("x", "y"))
+    global_min = jax.lax.pmin(local_min, axis_name = (1.0, 2.0))
     print("Global min:", global_min)
     
     return array
