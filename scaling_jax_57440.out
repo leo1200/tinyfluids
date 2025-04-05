@@ -1,17 +1,17 @@
-jpbot-001-38.jupiter.internal  Fri Apr  4 14:28:40 2025  570.86.15
-[0] NVIDIA GH200 120GB | 46°C,   0 % |     7 / 97871 MB |
-[1] NVIDIA GH200 120GB | 46°C,   0 % |    12 / 97871 MB |
-[2] NVIDIA GH200 120GB | 46°C,   0 % |     9 / 97871 MB |
-[3] NVIDIA GH200 120GB | 46°C,   0 % |    10 / 97871 MB |
-Execution time: min=0.002451s, mean=0.002622s
-Execution time: min=0.009683s, mean=0.009785s
-Execution time: min=0.026385s, mean=0.026476s
-Execution time: min=0.091056s, mean=0.091288s
-Execution time: min=0.594251s, mean=0.596472s
-Execution time: min=1.702809s, mean=1.703883s
-Execution time: min=8.800342s, mean=8.802622s
-Execution time: min=29.348821s, mean=29.353163s
-Execution time: min=152.478903s, mean=152.487145s
+jpbot-001-45.jupiter.internal  Sat Apr  5 13:48:43 2025  570.86.15
+[0] NVIDIA GH200 120GB | 46°C,   0 % |     1 / 97871 MB |
+[1] NVIDIA GH200 120GB | 47°C,   0 % |    55 / 97871 MB |
+[2] NVIDIA GH200 120GB | 47°C,   0 % |    32 / 97871 MB |
+[3] NVIDIA GH200 120GB | 47°C,   0 % |    11 / 97871 MB |
+Execution time: min=0.001980s, mean=0.002125s
+Execution time: min=0.006428s, mean=0.006508s
+Execution time: min=0.024395s, mean=0.024550s
+Execution time: min=0.082908s, mean=0.082986s
+Execution time: min=0.559784s, mean=0.562984s
+Execution time: min=1.464719s, mean=1.466351s
+Execution time: min=7.514550s, mean=7.515474s
+Execution time: min=24.537891s, mean=24.539327s
+Execution time: min=128.716188s, mean=128.729415s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -23,7 +23,7 @@ Execution time: min=152.478903s, mean=152.487145s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=0.008370s, mean=0.008902s
+Execution time: min=0.004231s, mean=0.004527s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -35,7 +35,7 @@ Execution time: min=0.008370s, mean=0.008902s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=0.023255s, mean=0.024210s
+Execution time: min=0.009237s, mean=0.009499s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -47,7 +47,7 @@ Execution time: min=0.023255s, mean=0.024210s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=0.053372s, mean=0.055002s
+Execution time: min=0.017254s, mean=0.017534s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -59,7 +59,7 @@ Execution time: min=0.053372s, mean=0.055002s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=0.120753s, mean=0.125709s
+Execution time: min=0.033901s, mean=0.034396s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -71,7 +71,7 @@ Execution time: min=0.120753s, mean=0.125709s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=0.518161s, mean=0.521602s
+Execution time: min=0.163246s, mean=0.163734s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -83,7 +83,7 @@ Execution time: min=0.518161s, mean=0.521602s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=1.432241s, mean=1.433880s
+Execution time: min=0.443399s, mean=0.444256s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -95,7 +95,7 @@ Execution time: min=1.432241s, mean=1.433880s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=6.752787s, mean=6.759674s
+Execution time: min=2.128617s, mean=2.129653s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -107,7 +107,7 @@ Execution time: min=6.752787s, mean=6.759674s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=20.204523s, mean=20.220487s
+Execution time: min=6.341944s, mean=6.345779s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -119,7 +119,7 @@ Execution time: min=20.204523s, mean=20.220487s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=101.836476s, mean=101.894614s
+Execution time: min=32.036226s, mean=32.039896s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -131,7 +131,7 @@ Execution time: min=101.836476s, mean=101.894614s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=360.814279s, mean=360.868492s
+Execution time: min=109.688001s, mean=109.744965s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -143,7 +143,7 @@ Execution time: min=360.814279s, mean=360.868492s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=0.981378s, mean=0.987018s
+Execution time: min=1.551593s, mean=1.555052s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -155,7 +155,7 @@ Execution time: min=0.981378s, mean=0.987018s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=1.346745s, mean=1.355535s
+Execution time: min=2.275489s, mean=2.290113s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -167,7 +167,7 @@ Execution time: min=1.346745s, mean=1.355535s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=1.301559s, mean=1.315205s
+Execution time: min=2.164772s, mean=2.168444s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -179,7 +179,7 @@ Execution time: min=1.301559s, mean=1.315205s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=1.447193s, mean=1.451330s
+Execution time: min=2.161650s, mean=2.229333s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -191,7 +191,7 @@ Execution time: min=1.447193s, mean=1.451330s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=1.646722s, mean=1.655491s
+Execution time: min=2.408914s, mean=2.497518s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -203,7 +203,7 @@ Execution time: min=1.646722s, mean=1.655491s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=1.939035s, mean=1.942768s
+Execution time: min=2.235302s, mean=2.280182s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -215,7 +215,7 @@ Execution time: min=1.939035s, mean=1.942768s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=4.051424s, mean=4.058026s
+Execution time: min=4.249013s, mean=4.251237s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -227,7 +227,7 @@ Execution time: min=4.051424s, mean=4.058026s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=9.297638s, mean=9.312399s
+Execution time: min=9.614554s, mean=9.616095s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -239,7 +239,7 @@ Execution time: min=9.297638s, mean=9.312399s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=44.907935s, mean=44.959617s
+Execution time: min=39.506649s, mean=39.520029s
 ┌──────────┬──────────┐
 │          │          │
 │  GPU 0   │  GPU 1   │
@@ -251,4 +251,4 @@ Execution time: min=44.907935s, mean=44.959617s
 │          │          │
 │          │          │
 └──────────┴──────────┘
-Execution time: min=156.020258s, mean=156.033824s
+Execution time: min=120.148031s, mean=120.184398s

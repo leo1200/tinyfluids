@@ -67,7 +67,7 @@ def _time_integration_inner(
 
         # the wave speed calculation is currently done twice, once
         # for finding dt and once for the state update, which
-        # is not optimal
+        # is not optimal, TODO: merge
         dt = _cfl_time_step(primitive_state, grid_spacing, gamma)
 
         if shard_mapped:

@@ -339,8 +339,12 @@ def _cfl_time_step(
     # ==================== ↓ cell communication here ↓ ===================
 
     # wave speeds in x direction
-    primitive_state_left = jax.lax.slice_in_dim(primitive_state, 0, -1, axis = X_AXIS)
-    primitive_state_right = jax.lax.slice_in_dim(primitive_state, 1, None, axis = X_AXIS)
+    # primitive_state_left = jax.lax.slice_in_dim(primitive_state, 0, -1, axis = X_AXIS)
+    # primitive_state_right = jax.lax.slice_in_dim(primitive_state, 1, None, axis = X_AXIS)
+
+    primitive_state_left = jnp.roll(primitive_state, shift = 1, axis = X_AXIS)
+    primitive_state_right = primitive_state
+
     max_wave_speed_x = get_max_wave_speeds(
         primitive_state_left,
         primitive_state_right,
@@ -349,8 +353,13 @@ def _cfl_time_step(
     )
 
     # wave speeds in y direction
-    primitive_state_left = jax.lax.slice_in_dim(primitive_state, 0, -1, axis = Y_AXIS)
-    primitive_state_right = jax.lax.slice_in_dim(primitive_state, 1, None, axis = Y_AXIS)
+    # primitive_state_left = jax.lax.slice_in_dim(primitive_state, 0, -1, axis = Y_AXIS)
+    # primitive_state_right = jax.lax.slice_in_dim(primitive_state, 1, None, axis = Y_AXIS)
+
+    primitive_state_left = jnp.roll(primitive_state, shift = 1, axis = Y_AXIS)
+    primitive_state_right = primitive_state
+
+
     max_wave_speed_y = get_max_wave_speeds(
         primitive_state_left,
         primitive_state_right,
@@ -359,8 +368,13 @@ def _cfl_time_step(
     )
 
     # wave speeds in z direction
-    primitive_state_left = jax.lax.slice_in_dim(primitive_state, 0, -1, axis = Z_AXIS)
-    primitive_state_right = jax.lax.slice_in_dim(primitive_state, 1, None, axis = Z_AXIS)
+    # primitive_state_left = jax.lax.slice_in_dim(primitive_state, 0, -1, axis = Z_AXIS)
+    # primitive_state_right = jax.lax.slice_in_dim(primitive_state, 1, None, axis = Z_AXIS)
+
+    primitive_state_left = jnp.roll(primitive_state, shift = 1, axis = Z_AXIS)
+    primitive_state_right = primitive_state
+
+
     max_wave_speed_z = get_max_wave_speeds(
         primitive_state_left,
         primitive_state_right,
@@ -394,20 +408,39 @@ def _evolve_state_along_axis(
     conservative_states = conserved_state_from_primitive(primitive_state, gamma)
 
     # ==================== ↓ cell communication here ↓ ===================
-    primitive_state_left = jax.lax.slice_in_dim(primitive_state, 0, -1, axis = axis)
-    primitive_state_right = jax.lax.slice_in_dim(primitive_state, 1, None, axis = axis)
+    # primitive_state_left = jax.lax.slice_in_dim(primitive_state, 0, -1, axis = axis)
+    # primitive_state_right = jax.lax.slice_in_dim(primitive_state, 1, None, axis = axis)
+
+    # primitive state
+    #          |0|1|2|3|4|
+    # roll 1   |4|0|1|2|3|
+    # roll -1  |1|2|3|4|0|
+
+    primitive_state_left = jnp.roll(primitive_state, shift = 1, axis = axis)
+    primitive_state_right = primitive_state
 
     fluxes = _hll_solver(primitive_state_left, primitive_state_right, gamma, axis)
 
+    # this will have the flux between 1 and 2 at 2
+    # this will have the flux between 2 and 3 at 3
+
+
     # update the conserved variables
-    conserved_change = -1 / grid_spacing * (
-        jax.lax.slice_in_dim(fluxes, 1, None, axis = axis) - 
-        jax.lax.slice_in_dim(fluxes, 0, -1, axis = axis)
+    # conserved_change = -1 / grid_spacing * (
+    #     jax.lax.slice_in_dim(fluxes, 1, None, axis = axis) - 
+    #     jax.lax.slice_in_dim(fluxes, 0, -1, axis = axis)
+    # ) * dt
+
+    # conservative_states = conservative_states.at[
+    #     tuple(slice(1, -1) if i == axis else slice(None) for i in range(conservative_states.ndim))
+    # ].add(conserved_change)
+
+    conserved_change = 1 / grid_spacing * (
+        fluxes - jnp.roll(fluxes, shift = -1, axis = axis)
     ) * dt
 
-    conservative_states = conservative_states.at[
-        tuple(slice(1, -1) if i == axis else slice(None) for i in range(conservative_states.ndim))
-    ].add(conserved_change)
+    conservative_states = conservative_states + conserved_change
+
     # ==================== ↑ cell communication here ↑ ===================
 
     primitive_state = primitive_state_from_conserved(conservative_states, gamma)
