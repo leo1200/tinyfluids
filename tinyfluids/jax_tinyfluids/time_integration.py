@@ -33,12 +33,13 @@ from tinyfluids.jax_tinyfluids.fluid import STATE_TYPE, _cfl_time_step, _evolve_
 # -------------------------------------------------------------
 
 @jaxtyped(typechecker=typechecker)
-@partial(jax.jit, static_argnames=["shard_mapped", "padding", "split"])
+@partial(jax.jit, static_argnames=["handle_boundaries", "shard_mapped", "padding", "split"])
 def _time_integration_inner(
     primitive_state: STATE_TYPE,
     grid_spacing: Union[float, Float[Array, ""]],
     t_final: Union[float, Float[Array, ""]],
     gamma: Union[float, Float[Array, ""]],
+    handle_boundaries: bool,
     shard_mapped: bool,
     padding: Union[NoneType, Tuple[Tuple[int, int], ...]] = None,
     split: Union[NoneType, Tuple[int, ...]] = None,
@@ -74,7 +75,7 @@ def _time_integration_inner(
             # see https://github.com/jax-ml/jax/issues/27665
             dt = jax.lax.pmin(dt, axis_name=(1.0, 2.0))
 
-        primitive_state = _evolve_state(primitive_state, grid_spacing, dt, gamma)
+        primitive_state = _evolve_state(primitive_state, grid_spacing, dt, gamma, handle_boundaries)
 
         t += dt
         num_iterations += 1
@@ -95,6 +96,7 @@ def time_integration(
     grid_spacing: Union[float, Float[Array, ""]],
     t_final: Union[float, Float[Array, ""]],
     gamma: Union[float, Float[Array, ""]],
+    handle_boundaries: bool,
     shard_mapped: bool,
     padding: Union[NoneType, Tuple[Tuple[int, int], ...]] = None,
     split: Union[NoneType, Tuple[int, ...]] = None,
@@ -117,13 +119,13 @@ def time_integration(
         sharded_time_integration = shard_map(
             _time_integration_inner,
             mesh = primitive_state.sharding.mesh,
-            in_specs = (primitive_state.sharding.spec, None, None, None, None, None, None),
+            in_specs = (primitive_state.sharding.spec, None, None, None, None, None, None, None),
             out_specs = (primitive_state.sharding.spec, P()),
             check_rep = False
         )
-        return sharded_time_integration(primitive_state, grid_spacing, t_final, gamma, True, padding, split)
+        return sharded_time_integration(primitive_state, grid_spacing, t_final, gamma, False, True, padding, split)
     else:
-        return _time_integration_inner(primitive_state, grid_spacing, t_final, gamma, False)
+        return _time_integration_inner(primitive_state, grid_spacing, t_final, gamma, handle_boundaries, False)
 
 # -------------------------------------------------------------
 # ==================== ↑ Time Integration ↑ ===================

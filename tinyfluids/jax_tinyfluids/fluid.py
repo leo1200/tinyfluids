@@ -308,6 +308,115 @@ def _hll_solver(
 # ==================== ↑ Flux Calculation ↑ ===================
 # -------------------------------------------------------------
 
+
+
+# -------------------------------------------------------------
+# ==================== ↓ Border Handling ↓ ====================
+# -------------------------------------------------------------
+
+@jaxtyped(typechecker=typechecker)
+@partial(jax.jit, static_argnames=['axis', 'set_index', 'get_index'])
+def _set_along_axis(
+    primitive_state: STATE_TYPE,
+    axis: int,
+    set_index: int,
+    get_index: int
+) -> STATE_TYPE:
+
+    s_set = (slice(None),) * axis + (set_index,) + (slice(None),)*(primitive_state.ndim - axis - 1)
+    s_get = (slice(None),) * axis + (get_index,) + (slice(None),)*(primitive_state.ndim - axis - 1)
+
+    primitive_state = primitive_state.at[s_set].set(primitive_state[s_get])
+
+    return primitive_state
+
+@jaxtyped(typechecker=typechecker)
+@partial(jax.jit, static_argnames=['axis', 'num_ghost_cells'])
+def _open_right_boundary(
+    primitive_state: STATE_TYPE,
+    num_ghost_cells: int,
+    axis: int
+) -> STATE_TYPE:
+    """Apply the open boundary condition to the right boundary.
+    
+    Args:
+        primitive_state: The primitive state array.
+
+    Returns:
+        The primitive state array with the open boundary condition applied.
+    """
+
+    get_index = -num_ghost_cells - 1
+    
+    for set_index in range(-num_ghost_cells, 0):
+        primitive_state = _set_along_axis(primitive_state, axis, set_index, get_index)
+
+    return primitive_state
+
+@jaxtyped(typechecker=typechecker)
+@partial(jax.jit, static_argnames=['axis', 'num_ghost_cells'])
+def _open_left_boundary(
+    primitive_state: STATE_TYPE,
+    num_ghost_cells: int,
+    axis: int
+) -> STATE_TYPE:
+    """Apply the open boundary condition to the left boundary.
+
+    Args:
+        primitive_state: The primitive state array.
+
+    Returns:
+        The primitive state array with
+        the open boundary condition applied.
+
+    """
+
+    get_index = num_ghost_cells
+
+    for set_index in range(num_ghost_cells):
+        primitive_state = _set_along_axis(primitive_state, axis, set_index, get_index)
+
+    return primitive_state
+
+
+@jaxtyped(typechecker=typechecker)
+@partial(jax.jit, static_argnames=['num_ghost_cells'])
+def _open_boundaries(
+    primitive_state: STATE_TYPE,
+    num_ghost_cells: int
+) -> STATE_TYPE:
+    """Apply the open boundary condition to all boundaries.
+
+    Args:
+        primitive_state: The primitive state array.
+
+    Returns:
+        The primitive state array with the open boundary condition applied.
+    
+    """
+
+    # open left boundary
+    primitive_state = _open_left_boundary(primitive_state, num_ghost_cells, X_AXIS)
+    # open right boundary
+    primitive_state = _open_right_boundary(primitive_state, num_ghost_cells, X_AXIS)
+
+    # open left boundary
+    primitive_state = _open_left_boundary(primitive_state, num_ghost_cells, Y_AXIS)
+    # open right boundary
+    primitive_state = _open_right_boundary(primitive_state, num_ghost_cells, Y_AXIS)
+
+    # open left boundary
+    primitive_state = _open_left_boundary(primitive_state, num_ghost_cells, Z_AXIS)
+    # open right boundary
+    primitive_state = _open_right_boundary(primitive_state, num_ghost_cells, Z_AXIS)
+
+    return primitive_state
+
+# -------------------------------------------------------------
+# ==================== ↑ Border Handling ↑ ====================
+# -------------------------------------------------------------
+
+
 # -------------------------------------------------------------
 # ==================== ↓ Single Time Step ↓ ===================
 # -------------------------------------------------------------
@@ -449,13 +558,19 @@ def _evolve_state_along_axis(
 
 
 @jaxtyped(typechecker=typechecker)
-@jax.jit
+@partial(jax.jit, static_argnames=['handle_boundaries'])
 def _evolve_state(
     primitive_state: STATE_TYPE,
     grid_spacing: Union[float, Float[Array, ""]],
     dt: Union[float, Float[Array, ""]],
     gamma: Union[float, Float[Array, ""]],
+    handle_boundaries: bool = False
 ) -> STATE_TYPE:
+    
+    # open boundaries
+    if handle_boundaries:
+        primitive_state = _open_boundaries(primitive_state, 1)
+
     primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, X_AXIS)
     primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, Y_AXIS)
     primitive_state = _evolve_state_along_axis(primitive_state, grid_spacing, dt, gamma, Z_AXIS)
